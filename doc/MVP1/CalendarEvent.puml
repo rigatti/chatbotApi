@@ -1,0 +1,23 @@
+@startuml
+
+skinparam roundcorner 10
+skinparam maxmessagesize 180
+
+title <b><font size="20">Sequence flow for MVP1 - Get a calendar event</font></b>
+
+actor User
+participant ChatBotApi
+participant DialogFlowApi
+participant FourCastApi
+
+User -> ChatBotApi: get(plain text)
+ChatBotApi -> DialogFlowApi: get(plain text)
+DialogFlowApi -> DialogFlowApi: Isolate intent and keywords based on plain text input
+DialogFlowApi -> ChatBotApi: return intent and keywords
+ChatBotApi -> ChatBotApi: prepare data and context
+ChatBotApi -> FourCastApi: get(context and keywords)
+FourCastApi -> FourCastApi: Extract data based on keywords for a given context
+FourCastApi -> ChatBotApi: return data corresponding to keywords
+ChatBotApi -> User
+
+@enduml
