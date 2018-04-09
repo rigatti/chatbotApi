@@ -1,56 +1,52 @@
 package be.ing.api.chatbot.service;
 
-import be.ing.api.chatbot.helpers.JSONUtils;
-import be.ing.api.chatbot.model.ChatMessages.BotMessages;
 import be.ing.api.chatbot.model.ChatMessages.ChatMessage;
 import be.ing.api.chatbot.model.ChatMessages.TextMessage;
-import be.ing.api.chatbot.model.actors.BotActor;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpRequest;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.ClientHttpRequest;
-import org.springframework.http.client.reactive.ClientHttpConnector;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 import reactor.ipc.netty.http.client.HttpClient;
-import reactor.ipc.netty.http.client.HttpClientResponse;
-import reactor.ipc.netty.options.ClientProxyOptions;
 
-import java.net.URL;
-import java.util.*;
-
-import static reactor.ipc.netty.options.ClientProxyOptions.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 public class APIAIBotProviderAPI {
 
-    @Qualifier("API_VERSION")
+    @Qualifier("API_DIALOGFLOW_VERSION")
     @Autowired
-    private String API_VERSION;
+    private String API_DIALOGFLOW_VERSION;
 
-    @Qualifier("API_DOMAIN")
+    @Qualifier("API_DIALOGFLOW_DOMAIN")
     @Autowired
-    private String API_DOMAIN;
+    private String API_DIALOGFLOW_DOMAIN;
 
-    @Qualifier("API_PATH")
+    @Qualifier("API_DIALOGFLOW_PATH")
     @Autowired
-    private String API_PATH;
+    private String API_DIALOGFLOW_PATH;
 
-    @Qualifier("API_TOKEN")
+    @Qualifier("API_DIALOGFLOW_TOKEN")
     @Autowired
-    private String API_TOKEN;
+    private String API_DIALOGFLOW_TOKEN;
+
+    @Qualifier("ENV_INTRANET")
+    @Autowired
+    private boolean ENV_INTRANET;
 
     @Autowired
     HttpClient httpClient;
+
+    JsonParser jsonParser = new JsonParser();
 
     private final int RESPONSE_TIMEOUT                  = 10; // Seconds
 
@@ -60,48 +56,51 @@ public class APIAIBotProviderAPI {
     private final int MESSAGE_MULTIPLE_CHOICE           = 2;
     private final int MESSAGE_CUSTOM_TYPE               = 4;
 
-    private final String SERVICE_NAME                   = "API.ai";
-    private final BotActor API_AI_CHATBOT_ACTOR         = new BotActor(SERVICE_NAME);
+    public List<ChatMessage> getResponse(String query) throws Exception {
 
-    public String getResponse() {
+        ReactorClientHttpConnector connector;
+        if (ENV_INTRANET) {
+            connector = new ReactorClientHttpConnector(options -> options
+                    .httpProxy(addressSpec -> {
+                        return addressSpec.host("127.0.0.1").port(3128);
+                    }));
+        } else {
+            connector = new ReactorClientHttpConnector();
+        }
 
-        ClientHttpConnector httpConnector = new ReactorClientHttpConnector();
         WebClient webClient = WebClient.builder()
-                                .baseUrl("https://api.dialogflow.com")
-                                .defaultHeader(HttpHeaders.CONTENT_TYPE, "application/json; charset=utf-8")
-                                .defaultHeader(HttpHeaders.CONTENT_LENGTH, "64")
-                                //.defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
-                                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + API_TOKEN)
+                                .clientConnector(connector)
+                                .baseUrl("https://" + API_DIALOGFLOW_DOMAIN )
+                                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_UTF8_VALUE)
+                                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + API_DIALOGFLOW_TOKEN)
                                 .build();
 
-        String body = buildRequestBody().toString();
         WebClient.RequestHeadersSpec<?> requestSpec = webClient
                                                 .method(HttpMethod.POST)
-                                                .uri("/v1/query?v=" + API_VERSION)
-                                                .contentType(MediaType.APPLICATION_JSON_UTF8)
-                                                .contentLength(body.length())
-                                                .accept(MediaType.ALL)
-                                                .body(BodyInserters.fromObject(body));
+                                                .uri(API_DIALOGFLOW_PATH + "?v=" + API_DIALOGFLOW_VERSION)
+                                                .body(BodyInserters.fromObject(buildRequestBody(query).toString()));
 
-        String response = requestSpec.exchange()
-                .block()
-                .bodyToMono(String.class)
-                .block();
+        final ClientResponse clientResponse = requestSpec.exchange().block();
+        if (clientResponse.statusCode().is2xxSuccessful()) {
+            JsonObject  jsonResponse = jsonParser.parse(clientResponse.bodyToMono(String.class).block()).getAsJsonObject();
+            JsonObject jsonResult = jsonResponse.getAsJsonObject("result");
+            JsonObject jsonFulfillment = jsonResult.getAsJsonObject("fulfillment");
 
-//        HttpClient client = HttpClient.create(o -> o.proxy(ops -> ops.type(Proxy.HTTP)
-//                .host("127.0.0.1")
-//                .port(8888)
-//                .nonProxyHosts("spring.io")));
+            return __createBotMessages(jsonFulfillment.getAsJsonArray("messages"));
 
-        return response;
+        } else {
+            //
+            throw new Exception("Error while getting data from Dialogflow");
+        }
     }
 
-    private JsonObject buildRequestBody() {
+    private JsonObject buildRequestBody(String query) {
         JsonObject jsonObject = new JsonObject();
 
         jsonObject.addProperty("lang", "fr");
         jsonObject.addProperty("sessionId", __createSessionID() );
-        jsonObject.addProperty("query", "List of competitions" );
+        jsonObject.addProperty("query", query);
 
         return jsonObject;
     }
@@ -131,10 +130,6 @@ public class APIAIBotProviderAPI {
             for (JsonElement message : messages) {
                 JsonObject msgObj = message.getAsJsonObject();
 
-                if(!__isMessageBelongsToCurrentPlatform(msgObj.get("platform"))) {
-                    continue;
-                }
-
                 int type = msgObj.get("type").getAsInt();
 
                 ChatMessage botMessage = null;
@@ -142,18 +137,18 @@ public class APIAIBotProviderAPI {
                     case MESSAGE_TEXT_TYPE:
                         botMessage = __createTextMessageFrom(msgObj);
                         break;
-                    case MESSAGE_IMAGE_TYPE:
-                        botMessage = __createImageMessageFrom(msgObj);
-                        break;
-                    case MESSAGE_CARD_TYPE:
-                        botMessage = __createCardMessageFrom(msgObj);
-                        break;
-                    case MESSAGE_MULTIPLE_CHOICE:
-                        botMessage = __createMultipleChoiceMessageFrom(msgObj);
-                        break;
-                    case MESSAGE_CUSTOM_TYPE:
-                        botMessage = __createCustomMessageFrom(msgObj);
-                        break;
+//                    case MESSAGE_IMAGE_TYPE:
+//                        botMessage = __createImageMessageFrom(msgObj);
+//                        break;
+//                    case MESSAGE_CARD_TYPE:
+//                        botMessage = __createCardMessageFrom(msgObj);
+//                        break;
+//                    case MESSAGE_MULTIPLE_CHOICE:
+//                        botMessage = __createMultipleChoiceMessageFrom(msgObj);
+//                        break;
+//                    case MESSAGE_CUSTOM_TYPE:
+//                        botMessage = __createCustomMessageFrom(msgObj);
+//                        break;
                     default:
                         //LOG.error("Unknown message type {}, unable to create bot message", type);
                 }
@@ -171,12 +166,6 @@ public class APIAIBotProviderAPI {
         return botMessages;
     }
 
-    protected boolean __isMessageBelongsToCurrentPlatform(JsonElement platformEl){
-        String platform = platformEl != null ? platformEl.getAsString() : null;
-
-        return false;
-    }
-
     protected TextMessage __createTextMessageFrom(JsonObject message) {
         // Speech is mandatory, so let it fail if not found
         String speech = message.get("speech").getAsString();
@@ -185,69 +174,5 @@ public class APIAIBotProviderAPI {
         }
 
         return null;
-    }
-
-    protected BotMessages.Image __createImageMessageFrom(JsonObject message) {
-        BotMessages.Image m = null;
-
-        try {
-            m = new BotMessages.Image();
-            String urlStr = message.get("imageUrl").getAsString();
-            URL url = new URL(urlStr);
-
-            m.setUrl(url);
-        } catch (Exception e) {
-            //LOG.error("An exception occurred, unable to create image message", e);
-        }
-
-        return m;
-    }
-
-    protected BotMessages.Card __createCardMessageFrom(JsonObject message) {
-        JsonElement title = message.get("title");
-        JsonElement subtitle = message.get("subtitle");
-
-        BotMessages.Card m = new BotMessages.Card(
-                title.getAsString(), // is mandatory, so throws exception on failure
-                (subtitle != null) ? subtitle.getAsString() : null); // subtitle not mandatory
-
-        // Buttons are mandatory so let if fail when not found
-        JsonArray buttons = message.get("buttons").getAsJsonArray();
-        for (JsonElement button : buttons) {
-            JsonObject b = button.getAsJsonObject(); // if not object throw exception
-
-            // Mandatory, so let it fail if not found
-            String text = b.get("text").getAsString();
-
-            // Not mandatory
-            JsonElement postbackOptional = b.get("postback");
-            String postback = (postbackOptional != null) ? postbackOptional.getAsString() : null;
-
-            m.addButton(text, postback);
-        }
-
-        return m;
-    }
-
-    protected BotMessages.MultipleChoice __createMultipleChoiceMessageFrom(JsonObject message) {
-        // Title is mandatory, so let it fail if not found
-        BotMessages.MultipleChoice m = new BotMessages.MultipleChoice(message.get("title").getAsString());
-
-        // Choices are mandatory so let if fail when not found
-        JsonArray choices = message.get("replies").getAsJsonArray();
-        for (JsonElement choice : choices) {
-            m.addChoice(choice.getAsString());
-        }
-
-        return m;
-    }
-
-    protected BotMessages.Custom __createCustomMessageFrom(JsonObject message) {
-        BotMessages.Custom m = new BotMessages.Custom();
-
-        // payload is mandatory, so let it fail if not found
-        m.setMessageData(message.get("payload").getAsJsonObject());
-
-        return m;
     }
 }

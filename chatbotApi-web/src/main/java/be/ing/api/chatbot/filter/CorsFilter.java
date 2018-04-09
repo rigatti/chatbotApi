@@ -2,15 +2,13 @@ package be.ing.api.chatbot.filter;
 
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
 
-public class CorsFilter {
-
+public class CorsFilter implements WebFilter {
 
     public Mono<Void> filter(final ServerWebExchange serverWebExchange, final WebFilterChain webFilterChain) {
         serverWebExchange.getResponse().getHeaders().add("Access-Control-Allow-Origin", "*");

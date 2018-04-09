@@ -6,8 +6,6 @@ import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-
 /**
  *
  * Created by Freddy Snijder (ING) on 18/06/2017.

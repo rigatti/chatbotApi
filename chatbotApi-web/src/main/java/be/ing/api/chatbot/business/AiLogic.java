@@ -1,13 +1,13 @@
 package be.ing.api.chatbot.business;
 
 import be.ing.api.chatbot.model.ChatAnswer;
+import be.ing.api.chatbot.model.ChatMessages.ChatMessage;
 import be.ing.api.chatbot.service.APIAIBotProviderAPI;
 import lombok.Getter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import reactor.core.Disposable;
-import reactor.core.publisher.Mono;
-import reactor.ipc.netty.http.client.HttpClientResponse;
+
+import java.util.List;
 
 @Component
 public class AiLogic {
@@ -16,13 +16,10 @@ public class AiLogic {
     @Autowired
     private APIAIBotProviderAPI providerAPI;
 
-    public ChatAnswer chat() {
+    public ChatAnswer chat(String query) throws Exception {
 
-        //Request request = this.providerAPI.buildRequest(context);
-        //Response response = this.providerAPI.getResponse(request);
-        //return this.providerAPI.updateContext(context, response);
-        final String response = providerAPI.getResponse();
+        final List<ChatMessage> response = providerAPI.getResponse(query);
 
-        return ChatAnswer.builder().status(200).message(response).build();
+        return ChatAnswer.builder().status(200).message(response.toString()).build();
     }
 }

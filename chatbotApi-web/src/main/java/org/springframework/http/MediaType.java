@@ -5,26 +5,13 @@
 
 package org.springframework.http;
 
+import org.springframework.lang.Nullable;
+import org.springframework.util.*;
+
 import java.io.Serializable;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
+import java.util.*;
 import java.util.stream.Collectors;
-import org.springframework.lang.Nullable;
-import org.springframework.util.Assert;
-import org.springframework.util.CollectionUtils;
-import org.springframework.util.InvalidMimeTypeException;
-import org.springframework.util.MimeType;
-import org.springframework.util.MimeTypeUtils;
-import org.springframework.util.StringUtils;
-import org.springframework.util.MimeType.SpecificityComparator;
 
 public class MediaType extends MimeType implements Serializable {
     private static final long serialVersionUID = 2069937152339670231L;
